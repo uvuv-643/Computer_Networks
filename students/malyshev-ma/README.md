@@ -1,12 +1,10 @@
 # Часть 2
 
-## Контейнеры
+## Узлы
 
 Буквами A,B,C будут назначены три узла
 
-B - центральный
-
-1-ый контейнер (A)
+1-ый контейнер (A):
 
 ```sh
 root@A:~# ip a
@@ -17,7 +15,7 @@ root@A:~# ip a
        valid_lft forever preferred_lft forever
 ```
 
-2-ой контейнер (B)
+2-ой контейнер (B):
 
 ```sh
 root@B:~# ip a
@@ -33,7 +31,7 @@ root@B:~# ip a
        valid_lft forever preferred_lft forever
 ```
 
-3-ий контейнер (C)
+3-ий контейнер (C):
 
 ```sh
 root@C:~# ip a
@@ -339,3 +337,339 @@ From 192.168.1.2 icmp_seq=2 Redirect Host(New nexthop: 192.168.2.2)
 2 packets transmitted, 2 received, +1 errors, 0% packet loss, time 1028ms
 rtt min/avg/max/mdev = 0.106/0.140/0.175/0.034 ms
 ```
+
+# Часть 3
+
+## Узлы
+
+Буквами A,B,C будут назначены три узла
+
+1-ый контейнер (A):
+
+```sh
+root@A:~# ip a
+...
+2: eth0@if167: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether ba:60:16:22:a6:e0 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 192.168.224.2/20 brd 192.168.239.255 scope global eth0
+       valid_lft forever preferred_lft forever
+```
+
+2-ой контейнер (B):
+
+```sh
+root@B:~# ip a
+...
+2: eth0@if170: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether ba:79:c8:a4:55:75 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 192.168.224.3/20 brd 192.168.239.255 scope global eth0
+       valid_lft forever preferred_lft forever
+3: eth1@if172: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 52:ec:0e:1b:42:5c brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 192.168.240.3/20 brd 192.168.255.255 scope global eth1
+       valid_lft forever preferred_lft forever
+
+```
+
+3-ий контейнер (C):
+
+```sh
+root@C:~# ip a
+...
+2: eth0@if169: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 9a:4b:83:4f:5f:fd brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 192.168.240.2/20 brd 192.168.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+```
+
+## Топология
+
+Физическая топология: `A-B-C`. A соединён с B и они находятся в одной сети, B соединён также с C, и они находятся в одной другой сети. Между A и B есть `docker-bridge`, также между B и C есть `docker-bridge`. У B два интерфейса, у A и C по одному
+
+## Взаимный пинг
+
+A:
+
+```sh
+root@A:~# ping -c3 192.168.224.3
+PING 192.168.224.3 (192.168.224.3) 56(84) bytes of data.
+64 bytes from 192.168.224.3: icmp_seq=1 ttl=64 time=0.051 ms
+64 bytes from 192.168.224.3: icmp_seq=2 ttl=64 time=0.098 ms
+64 bytes from 192.168.224.3: icmp_seq=3 ttl=64 time=0.068 ms
+
+--- 192.168.224.3 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2037ms
+rtt min/avg/max/mdev = 0.051/0.072/0.098/0.019 ms
+root@A:~# ping -c3 192.168.240.2
+PING 192.168.240.2 (192.168.240.2) 56(84) bytes of data.
+^C
+--- 192.168.240.2 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2031ms
+```
+
+B:
+
+```sh
+root@B:~# ping -c 3 192.168.224.2
+PING 192.168.224.2 (192.168.224.2) 56(84) bytes of data.
+64 bytes from 192.168.224.2: icmp_seq=1 ttl=64 time=0.073 ms
+64 bytes from 192.168.224.2: icmp_seq=2 ttl=64 time=0.090 ms
+64 bytes from 192.168.224.2: icmp_seq=3 ttl=64 time=0.083 ms
+
+--- 192.168.224.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2046ms
+rtt min/avg/max/mdev = 0.073/0.082/0.090/0.007 ms
+root@B:~# ping -c 3 192.168.240.2
+PING 192.168.240.2 (192.168.240.2) 56(84) bytes of data.
+64 bytes from 192.168.240.2: icmp_seq=1 ttl=64 time=0.119 ms
+64 bytes from 192.168.240.2: icmp_seq=2 ttl=64 time=0.083 ms
+64 bytes from 192.168.240.2: icmp_seq=3 ttl=64 time=0.074 ms
+
+--- 192.168.240.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2053ms
+rtt min/avg/max/mdev = 0.074/0.092/0.119/0.019 ms
+```
+
+C:
+
+```sh
+root@C:~# ping -c3 192.168.240.3
+PING 192.168.240.3 (192.168.240.3) 56(84) bytes of data.
+64 bytes from 192.168.240.3: icmp_seq=1 ttl=64 time=0.058 ms
+64 bytes from 192.168.240.3: icmp_seq=2 ttl=64 time=0.089 ms
+64 bytes from 192.168.240.3: icmp_seq=3 ttl=64 time=0.069 ms
+
+--- 192.168.240.3 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2053ms
+rtt min/avg/max/mdev = 0.058/0.072/0.089/0.012 ms
+root@C:~# ping -c3 192.168.224.2
+PING 192.168.224.2 (192.168.224.2) 56(84) bytes of data.
+^C
+--- 192.168.224.2 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2038ms
+```
+
+С A можно пропинговать только B, c B - оба узла, с C - только B
+
+## Назначение новых IP-адресов
+
+A: 
+
+```sh
+root@A:~# ip addr add 192.168.1.1/24 dev eth0
+root@A:~# ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: eth0@if167: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether ba:60:16:22:a6:e0 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 192.168.224.2/20 brd 192.168.239.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet 192.168.1.1/24 scope global eth0
+       valid_lft forever preferred_lft forever
+```
+
+B:
+
+```sh
+root@B:~# ip addr add 192.168.1.2/24 dev eth0
+root@B:~# ip addr add 192.168.2.1/24 dev eth1
+root@B:~# ip a
+...
+2: eth0@if170: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether ba:79:c8:a4:55:75 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 192.168.224.3/20 brd 192.168.239.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet 192.168.1.2/24 scope global eth0
+       valid_lft forever preferred_lft forever
+3: eth1@if172: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 52:ec:0e:1b:42:5c brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 192.168.240.3/20 brd 192.168.255.255 scope global eth1
+       valid_lft forever preferred_lft forever
+    inet 192.168.2.1/24 scope global eth1
+       valid_lft forever preferred_lft forever
+```
+
+C:
+
+```sh
+root@C:~# ip addr add 192.168.2.2/24 dev eth0
+root@C:~# ip a
+...
+2: eth0@if169: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 9a:4b:83:4f:5f:fd brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 192.168.240.2/20 brd 192.168.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet 192.168.2.2/24 scope global eth0
+       valid_lft forever preferred_lft forever
+```
+
+## Настройка таблиц маршрутизации
+
+A:
+
+```sh
+root@A:~# ip route add 192.168.2.0/24 via 192.168.1.2
+root@A:~# ip r
+default via 192.168.224.1 dev eth0
+192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.1
+192.168.2.0/24 via 192.168.1.2 dev eth0
+192.168.224.0/20 dev eth0 proto kernel scope link src 192.168.224.2
+```
+
+C:
+
+```sh
+root@C:~# ip route add 192.168.1.0/24 via 192.168.2.1
+root@C:~# ip r
+default via 192.168.240.1 dev eth0
+192.168.1.0/24 via 192.168.2.1 dev eth0
+192.168.2.0/24 dev eth0 proto kernel scope link src 192.168.2.2
+192.168.240.0/20 dev eth0 proto kernel scope link src 192.168.240.2
+```
+
+Попробуем теперь пропинговать остальные узлы с A,B и C
+
+С A пингуем B в обеих сетях, C:
+
+```sh
+root@A:~# ping -c3 192.168.1.2
+PING 192.168.1.2 (192.168.1.2) 56(84) bytes of data.
+64 bytes from 192.168.1.2: icmp_seq=1 ttl=64 time=0.111 ms
+64 bytes from 192.168.1.2: icmp_seq=2 ttl=64 time=0.089 ms
+64 bytes from 192.168.1.2: icmp_seq=3 ttl=64 time=0.073 ms
+
+--- 192.168.1.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2053ms
+rtt min/avg/max/mdev = 0.073/0.091/0.111/0.015 ms
+root@A:~# ping -c3 192.168.2.1
+PING 192.168.2.1 (192.168.2.1) 56(84) bytes of data.
+64 bytes from 192.168.2.1: icmp_seq=1 ttl=64 time=0.091 ms
+64 bytes from 192.168.2.1: icmp_seq=2 ttl=64 time=0.083 ms
+64 bytes from 192.168.2.1: icmp_seq=3 ttl=64 time=0.075 ms
+
+--- 192.168.2.1 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2039ms
+rtt min/avg/max/mdev = 0.075/0.083/0.091/0.006 ms
+root@A:~# ping -c3 192.168.2.2
+PING 192.168.2.2 (192.168.2.2) 56(84) bytes of data.
+64 bytes from 192.168.2.2: icmp_seq=1 ttl=63 time=0.088 ms
+64 bytes from 192.168.2.2: icmp_seq=2 ttl=63 time=0.096 ms
+64 bytes from 192.168.2.2: icmp_seq=3 ttl=63 time=0.137 ms
+
+--- 192.168.2.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2030ms
+rtt min/avg/max/mdev = 0.088/0.107/0.137/0.021 ms
+```
+
+С B пингуем A,C:
+
+```sh
+root@B:~# ping -c3 192.168.1.1
+PING 192.168.1.1 (192.168.1.1) 56(84) bytes of data.
+64 bytes from 192.168.1.1: icmp_seq=1 ttl=64 time=0.081 ms
+64 bytes from 192.168.1.1: icmp_seq=2 ttl=64 time=0.082 ms
+64 bytes from 192.168.1.1: icmp_seq=3 ttl=64 time=0.074 ms
+
+--- 192.168.1.1 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2039ms
+rtt min/avg/max/mdev = 0.074/0.079/0.082/0.003 ms
+root@B:~# ping -c3 192.168.2.2
+PING 192.168.2.2 (192.168.2.2) 56(84) bytes of data.
+64 bytes from 192.168.2.2: icmp_seq=1 ttl=64 time=0.161 ms
+64 bytes from 192.168.2.2: icmp_seq=2 ttl=64 time=0.082 ms
+64 bytes from 192.168.2.2: icmp_seq=3 ttl=64 time=0.073 ms
+
+--- 192.168.2.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2026ms
+rtt min/avg/max/mdev = 0.073/0.105/0.161/0.039 ms
+```
+
+С C пингуем A, B в обеих сетях:
+
+```sh
+root@C:~# ping -c3 192.168.1.1
+PING 192.168.1.1 (192.168.1.1) 56(84) bytes of data.
+64 bytes from 192.168.1.1: icmp_seq=1 ttl=63 time=0.075 ms
+64 bytes from 192.168.1.1: icmp_seq=2 ttl=63 time=0.254 ms
+64 bytes from 192.168.1.1: icmp_seq=3 ttl=63 time=0.100 ms
+
+--- 192.168.1.1 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2035ms
+rtt min/avg/max/mdev = 0.075/0.143/0.254/0.079 ms
+root@C:~# ping -c3 192.168.1.2
+PING 192.168.1.2 (192.168.1.2) 56(84) bytes of data.
+64 bytes from 192.168.1.2: icmp_seq=1 ttl=64 time=0.098 ms
+64 bytes from 192.168.1.2: icmp_seq=2 ttl=64 time=0.075 ms
+64 bytes from 192.168.1.2: icmp_seq=3 ttl=64 time=0.081 ms
+
+--- 192.168.1.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2040ms
+rtt min/avg/max/mdev = 0.075/0.084/0.098/0.009 ms
+root@C:~# ping -c3 192.168.2.1
+PING 192.168.2.1 (192.168.2.1) 56(84) bytes of data.
+64 bytes from 192.168.2.1: icmp_seq=1 ttl=64 time=0.055 ms
+64 bytes from 192.168.2.1: icmp_seq=2 ttl=64 time=0.071 ms
+64 bytes from 192.168.2.1: icmp_seq=3 ttl=64 time=0.080 ms
+
+--- 192.168.2.1 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2052ms
+rtt min/avg/max/mdev = 0.055/0.068/0.080/0.010 ms
+```
+
+## Анализ трафика через `tcpdump` на узле B
+
+Слушаем на B на интерфейсе `eth0`:
+
+```sh
+root@B:~# tcpdump -i eth0 icmp
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+17:52:13.009739 IP 192.168.1.1 > 192.168.2.2: ICMP echo request, id 164, seq 1, length 64
+17:52:13.009812 IP 192.168.2.2 > 192.168.1.1: ICMP echo reply, id 164, seq 1, length 64
+17:52:14.017495 IP 192.168.1.1 > 192.168.2.2: ICMP echo request, id 164, seq 2, length 64
+17:52:14.017543 IP 192.168.2.2 > 192.168.1.1: ICMP echo reply, id 164, seq 2, length 64
+17:52:15.041455 IP 192.168.1.1 > 192.168.2.2: ICMP echo request, id 164, seq 3, length 64
+17:52:15.041507 IP 192.168.2.2 > 192.168.1.1: ICMP echo reply, id 164, seq 3, length 64
+^C
+6 packets captured
+6 packets received by filter
+0 packets dropped by kernel
+```
+
+Слушаем на B на интерфейсе `eth1`:
+
+```sh
+root@B:~# tcpdump -i eth1 icmp
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on eth1, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+17:52:13.009757 IP 192.168.1.1 > 192.168.2.2: ICMP echo request, id 164, seq 1, length 64
+17:52:13.009800 IP 192.168.2.2 > 192.168.1.1: ICMP echo reply, id 164, seq 1, length 64
+17:52:14.017513 IP 192.168.1.1 > 192.168.2.2: ICMP echo request, id 164, seq 2, length 64
+17:52:14.017538 IP 192.168.2.2 > 192.168.1.1: ICMP echo reply, id 164, seq 2, length 64
+17:52:15.041479 IP 192.168.1.1 > 192.168.2.2: ICMP echo request, id 164, seq 3, length 64
+17:52:15.041503 IP 192.168.2.2 > 192.168.1.1: ICMP echo reply, id 164, seq 3, length 64
+^C
+6 packets captured
+6 packets received by filter
+0 packets dropped by kernel
+```
+
+Отправляем с A на C:
+
+```sh
+root@A:~# ping -c3 192.168.2.2
+PING 192.168.2.2 (192.168.2.2) 56(84) bytes of data.
+64 bytes from 192.168.2.2: icmp_seq=1 ttl=63 time=0.114 ms
+64 bytes from 192.168.2.2: icmp_seq=2 ttl=63 time=0.100 ms
+64 bytes from 192.168.2.2: icmp_seq=3 ttl=63 time=0.104 ms
+
+--- 192.168.2.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2032ms
+rtt min/avg/max/mdev = 0.100/0.106/0.114/0.005 ms
+```
+
+Было отправлено 3 пакета: видно 3 `request`'а и 3 `reply`'а, притом `request` на `eth0` всегда раньше `reply` на `eth0`, а реплай на `eth1` всегда раньше реплая на `eth0`, что логично, если учитывать физическую топологию.
