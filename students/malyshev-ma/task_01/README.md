@@ -673,3 +673,199 @@ rtt min/avg/max/mdev = 0.100/0.106/0.114/0.005 ms
 ```
 
 Было отправлено 3 пакета: видно 3 `request`'а и 3 `reply`'а, притом `request` на `eth0` всегда раньше `reply` на `eth0`, а реплай на `eth1` всегда раньше реплая на `eth0`, что логично, если учитывать физическую топологию.
+
+# Часть 4. Настройка `NAT`
+
+Решил выбрать настройку `NAT`: произвести `SNAT` (`Source Network Address Translation`). Это позволит заменять IP-адрес исходного пакета IP-адресом маршрутизатора, на котором настроен `SNAT` (гейтвея). Как это будет работать: возьму сеть из 3-ей части; пакет, который будет отправляться с узла A, будет виден для C, как пакет, отправленный с узла B
+
+## Реализация
+
+Релизация будет произведена с помощью утилиты `iptables`
+
+Настроим на узле B правило `iptables` в таблице `nat`:
+
+```sh
+root@B:~# iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE
+root@B:~# iptables -t nat -L
+Chain PREROUTING (policy ACCEPT)
+target     prot opt source               destination
+
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination
+
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source               destination
+DOCKER_OUTPUT  all  --  anywhere             127.0.0.11
+
+Chain POSTROUTING (policy ACCEPT)
+target     prot opt source               destination
+DOCKER_POSTROUTING  all  --  anywhere             127.0.0.11
+MASQUERADE  all  --  anywhere             anywhere
+
+Chain DOCKER_OUTPUT (1 references)
+target     prot opt source               destination
+DNAT       tcp  --  anywhere             127.0.0.11           tcp dpt:domain to:127.0.0.11:35463
+DNAT       udp  --  anywhere             127.0.0.11           udp dpt:domain to:127.0.0.11:59263
+
+Chain DOCKER_POSTROUTING (1 references)
+target     prot opt source               destination
+SNAT       tcp  --  127.0.0.11           anywhere             tcp spt:35463 to::53
+SNAT       udp  --  127.0.0.11           anywhere             udp spt:59263 to::53
+```
+
+Рассмотрим аргументы команды:
+
+- `-t nat`: выбор таблицы `nat`
+- `-A POSTROUTING`: добавление (`A=append`) правила в цепочку `POSTROUTING`
+- `-o eth1`: правило будет применено только к пакетам, которые выходят с интерфейса `eth1` (интерфейса, через который подключен узел C)
+- `-j MASQUERADE`: действие `jump`, которое будет заменять в исходящем пакете исходный адрес адресом, взятым с интерфейса, указанного ранее
+
+![iptables process flow](iptables_process_flow.jpg)
+
+## Эксперимент
+
+Попробуем пропинговать узел C с узла A и прослушать трафик на C:
+
+A:
+
+```sh
+root@A:~# ping -c3 192.168.2.2
+PING 192.168.2.2 (192.168.2.2) 56(84) bytes of data.
+64 bytes from 192.168.2.2: icmp_seq=1 ttl=63 time=0.114 ms
+64 bytes from 192.168.2.2: icmp_seq=2 ttl=63 time=0.119 ms
+64 bytes from 192.168.2.2: icmp_seq=3 ttl=63 time=0.108 ms
+
+--- 192.168.2.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2027ms
+rtt min/avg/max/mdev = 0.108/0.113/0.119/0.004 ms
+```
+
+C:
+
+```sh
+root@C:~# tcpdump -i eth0 -n icmp
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+18:40:50.230993 IP 192.168.2.1 > 192.168.2.2: ICMP echo request, id 169, seq 1, length 64
+18:40:50.231017 IP 192.168.2.2 > 192.168.2.1: ICMP echo reply, id 169, seq 1, length 64
+18:40:51.233532 IP 192.168.2.1 > 192.168.2.2: ICMP echo request, id 169, seq 2, length 64
+18:40:51.233556 IP 192.168.2.2 > 192.168.2.1: ICMP echo reply, id 169, seq 2, length 64
+18:40:52.257524 IP 192.168.2.1 > 192.168.2.2: ICMP echo request, id 169, seq 3, length 64
+18:40:52.257546 IP 192.168.2.2 > 192.168.2.1: ICMP echo reply, id 169, seq 3, length 64
+^C
+6 packets captured
+6 packets received by filter
+0 packets dropped by kernel
+```
+
+Для сравнения, вот дамп с узла C без `NAT`-правила:
+
+```sh
+root@C:~# tcpdump -i eth0 -n icmp
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+18:44:08.200227 IP 192.168.1.1 > 192.168.2.2: ICMP echo request, id 171, seq 1, length 64
+18:44:08.200249 IP 192.168.2.2 > 192.168.1.1: ICMP echo reply, id 171, seq 1, length 64
+18:44:09.217521 IP 192.168.1.1 > 192.168.2.2: ICMP echo request, id 171, seq 2, length 64
+18:44:09.217543 IP 192.168.2.2 > 192.168.1.1: ICMP echo reply, id 171, seq 2, length 64
+18:44:10.241501 IP 192.168.1.1 > 192.168.2.2: ICMP echo request, id 171, seq 3, length 64
+18:44:10.241523 IP 192.168.2.2 > 192.168.1.1: ICMP echo reply, id 171, seq 3, length 64
+^C
+6 packets captured
+6 packets received by filter
+0 packets dropped by kernel
+```
+
+Здесь показывается IP-адрес непосредственно узла A
+
+Однако, в правилах (таблицах) `netfilter` (часть ядра, которую можно получить с помощью команды `iptables`) нет правил на входящие цепочки на подмену IP-адреса с `192.168.2.1` обратно на `192.168.1.1` - адрес узла A:
+
+```sh
+root@B:~# iptables -t nat -L
+Chain PREROUTING (policy ACCEPT)
+target     prot opt source               destination
+
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination
+
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source               destination
+DOCKER_OUTPUT  all  --  anywhere             127.0.0.11
+
+Chain POSTROUTING (policy ACCEPT)
+target     prot opt source               destination
+DOCKER_POSTROUTING  all  --  anywhere             127.0.0.11
+MASQUERADE  all  --  anywhere             anywhere
+
+Chain DOCKER_OUTPUT (1 references)
+target     prot opt source               destination
+DNAT       tcp  --  anywhere             127.0.0.11           tcp dpt:domain to:127.0.0.11:35463
+DNAT       udp  --  anywhere             127.0.0.11           udp dpt:domain to:127.0.0.11:59263
+
+Chain DOCKER_POSTROUTING (1 references)
+target     prot opt source               destination
+SNAT       tcp  --  127.0.0.11           anywhere             tcp spt:35463 to::53
+SNAT       udp  --  127.0.0.11           anywhere             udp spt:59263 to::53
+```
+
+Каким образом тогда происходит обратная подмена (`reverse NAT`)? Почему в таблице нет правил? Насколько я понял, ядро пользуется в данном случае правилами `Connection tracking` (`conntrack`), то есть, правило для `reverse NAT` задаётся автоматически. Посмотреть эти правила можно, воспользовавшись утилитой `conntrack`. Сначала необходимо её установить:
+
+```sh
+root@B:~# apt-get update
+root@B:~# apt-get install conntrack
+```
+
+Посмотрим список подключений, отслеживаемых ядром на узле B:
+
+```sh
+root@B:~# conntrack -L
+...
+icmp     1 29 src=192.168.1.1 dst=192.168.2.2 type=8 code=0 id=170 src=192.168.2.2 dst=192.168.2.1 type=0 code=0 id=170 mark=0 use=1
+conntrack v1.4.6 (conntrack-tools): 3 flow entries have been shown.
+```
+
+Рассмотрим эту запись
+
+Первая половина (до `NAT`-преобразования):
+
+- `src=...`, `dst=...` (1-ые вхождения): фильтрация по исходному запросу по этим полям
+- `type=8`: фильтрация по типу пакета - `ICMP echo request`
+
+Вторая половина (до `NAT`-преобразования):
+
+- `src=...`, `dst=...` (2-ые вхождения): фильтрация по исходному запросу по этим полям
+- `type=0`: фильтрация по типу пакета - `ICMP echo reply`
+
+То есть, `conntrack` выстраивает соответствие: `A(192.168.1.1) <-> C(192.168.2.2)`
+
+## Удаление правила
+
+B:
+
+```sh
+root@B:~# iptables -t nat -D POSTROUTING -o eth1 -j MASQUERADE
+root@B:~# iptables -t nat -L
+Chain PREROUTING (policy ACCEPT)
+target     prot opt source               destination
+
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination
+
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source               destination
+DOCKER_OUTPUT  all  --  anywhere             127.0.0.11
+
+Chain POSTROUTING (policy ACCEPT)
+target     prot opt source               destination
+DOCKER_POSTROUTING  all  --  anywhere             127.0.0.11
+
+Chain DOCKER_OUTPUT (1 references)
+target     prot opt source               destination
+DNAT       tcp  --  anywhere             127.0.0.11           tcp dpt:domain to:127.0.0.11:35463
+DNAT       udp  --  anywhere             127.0.0.11           udp dpt:domain to:127.0.0.11:59263
+
+Chain DOCKER_POSTROUTING (1 references)
+target     prot opt source               destination
+SNAT       tcp  --  127.0.0.11           anywhere             tcp spt:35463 to::53
+SNAT       udp  --  127.0.0.11           anywhere             udp spt:59263 to::53
+```
